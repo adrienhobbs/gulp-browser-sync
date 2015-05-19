@@ -1,109 +1,9 @@
-//var jadeDir     = "partials",
-//    sassDir     = './sass',
-//    homeDir     = "./",
-//    jsDir       = "js",
-//    gulp        = require('gulp'),
-//    jade        = require('gulp-jade'),
-//    notify      = require('gulp-notify'),
-//    sass        = require('gulp-ruby-sass'),
-//    livereload  = require('gulp-livereload'),
-//    browserify  = require('gulp-browserify'),
-//    rename      = require('gulp-rename'),
-//    uglify      = require('gulp-uglifyjs'),
-//    shell       = require('gulp-shell'),
-//    argv        = require('yargs').argv;
-//
-//
-//
-//
-//
-//gulp.task('push', shell.task(['git add -A && git commit -m "' + argv.m + '" && git push']));
-//
-//gulp.task('jade', function () {
-//  return gulp.src(jadeDir + "/**/*.jade")
-//      .pipe(jade())
-//      .pipe(gulp.dest(homeDir))
-//      .pipe(livereload())
-//    .pipe(notify('Jade has been compiled. '));
-//});
-//
-//gulp.task('sass', function() {
-//    return sass("./sass")
-//        .pipe(gulp.dest('css'))
-//        .pipe(notify('Sass has been compiled.'));
-//});
-//
-//gulp.task('js', function(){
-//    gulp.src('js/app.js')
-//        .pipe(browserify())
-//        .pipe(rename('/bundle.js'))
-//        .pipe(gulp.dest('./js'))
-//        .pipe(notify('JS has been bundled.'));
-//});
-//
-//gulp.task('uglify', function() {
-//  gulp.src('js/bundle.js')
-//    .pipe(uglify())
-//    .pipe(rename('bundle.min.js'))
-//    .pipe(gulp.dest('js'))
-//});
-//
-//gulp.task('watch', function() {
-//  var server = livereload();
-//
-//  gulp.watch(jadeDir + "/**/*.jade", ['jade']).on('change', function(file) {
-//      server.changed(file.path);
-//  });
-//
-//  gulp.watch(sassDir + "/*.scss", ['sass']).on('change', function(file) {
-//      server.changed(file.path);
-//  });
-//
-//  gulp.watch(jsDir + "/**/*.js", ['js']).on('change', function(file) {
-//      server.changed(file.path);
-//  });
-//
-//  gulp.watch(jsDir + "/**/*.js").on('change', function(file) {
-//      server.changed(file.path);
-//  });
-//});
-//
-//gulp.task('serve', ['jade','js','uglify','sass', 'watch']);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 var gulp        = require("gulp"),
     sass        = require("gulp-ruby-sass"),
     filter      = require('gulp-filter'),
     notify      = require('gulp-notify'),
     jade        = require('gulp-jade'),
-    uglify      = require('gulp-uglify'),
+    uglify      = require('gulp-uglifyjs'),
     sourcemaps  = require('gulp-sourcemaps'),
     gutil       = require('gulp-util'),
     source      = require('vinyl-source-stream'),
@@ -113,52 +13,57 @@ var gulp        = require("gulp"),
     plumber     = require('gulp-plumber'),
     tap         = require('gulp-tap'),
     streamify   = require('gulp-streamify'),
-    gulpif      = require('gulp-if');
+    gulpif      = require('gulp-if'),
+    shell       = require('gulp-shell'),
+    argv        = require('yargs').argv,
+    browserSync = require("browser-sync").create(),
+    reload      = browserSync.reload,
+    inject      = require('gulp-inject');
+
+var isDebug = true; //uncomment for dev
+var homeDir = './';
+
+var paths = {
+    homeDir: '/',
+    jade: {
+        loc: "partials/**/*.jade",
+        dest: homeDir
+    },
+    sass: {
+        loc: "scss/**/*.scss",
+        dest: "css",
+        sassFile: "scss/app.scss"
+    },
+    js: {
+        loc: "js/**/*.js",
+        dest: "dist/js",
+        entry: "js/app.js"
+    },
+    inject: {
+        jadeIndex: "partials/index.jade",
+        js: "dist/js/**/*.js",
+        css: "css/**/*.css"
+    }
+};
 
 gulp.task('push', shell.task(['git add -A && git commit -m "' + argv.m + '" && git push']));
 
-var browserSync = require("browser-sync").create();
-var reload = browserSync.reload;
-var isDebug = true;
-
-// Static Server + watching scss/html files
-gulp.task('serve', ['sass'], function() {
-
+gulp.task('serve', ['sass', 'js', 'jade'], function() {
     browserSync.init({
         server: "./"
     });
-
-    gulp.watch("scss/*.scss", ['sass']);
-    gulp.watch("partials/*.jade", ['jade-watch']);
-    gulp.watch("js/**/*.js", ['js-watch']);
-    gulp.watch("app/*.html").on('change', reload);
+    gulp.watch(paths.sass.loc, ['sass']);
+    gulp.watch(paths.jade.loc,['jade']);
+    gulp.watch(paths.js.loc, ['js', 'inject', 'jade']);
 });
-
-gulp.task('js-watch', ['js'], reload);
-gulp.task('jade-watch', ['jade'], reload);
-
-
-function handleError(err) {
-    notify('Error ');
-    gutil.log(
-        gutil.colors.red("Browserify compile error:"),
-        err.message,
-        "\n\t",
-        gutil.colors.cyan("in file"),
-        file.path
-    );
-    this.emit('end');
-
-}
-
 
 gulp.task('js', function() {
     var b = browserify({
-        entries: "js/app.js",
+        entries: paths.js.entry,
         debug: true
     });
 
-    return gulp.src('js/app.js')
+    return gulp.src(paths.js.entry)
         .pipe(plumber())
         .pipe(tap(
             function (file) {
@@ -182,22 +87,28 @@ gulp.task('js', function() {
             compress: true
         }))))
         .pipe(rename('bundle.js'))
-        .pipe(gulp.dest("dist/js"))
+        .pipe(gulp.dest(paths.js.dest))
         .pipe(reload({stream: true}));
 });
 
-gulp.task('jade', function () {
-  return gulp.src("partials/**/*.jade")
+gulp.task('jade', ['inject'], function () {
+  return gulp.src(paths.jade.loc)
       .pipe(jade())
-      .pipe(gulp.dest('./'))
+      .pipe(gulp.dest(paths.jade.dest))
       .pipe(notify('Jade has been compiled.'));
 });
 
+gulp.task('inject', ['js','sass'], function() {
+    var target = gulp.src(paths.inject.jadeIndex);
+    var sources = gulp.src([paths.inject.js, paths.inject.css], {read: false});
+
+    return target.pipe(inject(sources))
+        .pipe(gulp.dest('partials'));
+});
+
 gulp.task('sass', function () {
-    return sass('scss/app.scss', {style: 'expanded', sourcemap: true})
-        .pipe(gulp.dest('css'))// Write the CSS & Source maps
+    return sass(paths.sass.sassFile, {style: 'expanded', sourcemap: true})
+        .pipe(gulp.dest(paths.sass.dest))// Write the CSS & Source maps
         .pipe(filter('**/*.css')) // Filtering stream to only css files
         .pipe(browserSync.reload({stream:true}));
 });
-
-
